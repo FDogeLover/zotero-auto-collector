@@ -1,0 +1,9 @@
+# 密钥与本地状态——绝不提交
+.env
+state.db
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
