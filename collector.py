@@ -8,6 +8,7 @@
 
 仅 Python 标准库，零第三方依赖。配置见 .env.example。
 """
+import argparse
 import json
 import os
 import re
@@ -19,6 +20,13 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
+
+# Windows GBK 控制台防中文输出崩溃
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 
@@ -243,7 +251,17 @@ def fetch_arxiv(keyword, day):
 
 # ---------------- 主流程 ----------------
 
+def parse_args():
+    p = argparse.ArgumentParser(description="每日学术文献增量采集 → Zotero 云端库")
+    p.add_argument("--date", metavar="YYYY-MM-DD",
+                   help="只采集指定日期（宕机补漏用）")
+    p.add_argument("--days", type=int, default=1,
+                   help="回溯 N 天（从昨天起往回共 N 天，默认 1=仅昨天）")
+    return p.parse_args()
+
+
 def main():
+    args = parse_args()
     log("=== 采集开始 ===")
     if not (USER and KEY):
         log("缺少 ZOTERO_USER_ID / ZOTERO_API_KEY")
@@ -253,20 +271,27 @@ def main():
         log("未配置任何通道（CHANNEL_<N>_KEYWORDS），跳过采集")
         return 0
 
-    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    if args.date:
+        days = [args.date]
+    else:
+        days = [(datetime.now() - timedelta(days=d)).strftime("%Y-%m-%d")
+                for d in range(1, max(1, args.days) + 1)]
+    window = f"{days[0]}" if len(days) == 1 else f"{days[-1]} ~ {days[0]}（共 {len(days)} 天）"
+    log(f"采集窗口: {window}")
     for c in channels:
         log(f"通道 [{c['name']}] → {target_lib(c['target'])} | 关键词: {c['keywords']}")
 
     # 抓取：所有通道的候选统一收集（同一文献只入库一次，先进先得）
     candidates = []
-    for c in channels:
-        for kw in c["keywords"]:
-            for cand in fetch_openalex(kw, yesterday) + fetch_arxiv(kw, yesterday):
-                cand["target"] = c["target"]
-                cand["ch_name"] = c["name"]
-                cand["kw"] = kw
-                candidates.append(cand)
-            time.sleep(1)  # 对数据源的礼貌间隔
+    for day in days:
+        for c in channels:
+            for kw in c["keywords"]:
+                for cand in fetch_openalex(kw, day) + fetch_arxiv(kw, day):
+                    cand["target"] = c["target"]
+                    cand["ch_name"] = c["name"]
+                    cand["kw"] = kw
+                    candidates.append(cand)
+                time.sleep(1)  # 对数据源的礼貌间隔
     log(f"候选: {len(candidates)} 条")
 
     # 去重 + 打标签

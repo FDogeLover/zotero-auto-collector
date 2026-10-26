@@ -59,20 +59,39 @@ CHANNEL_1_TARGET=user
 ### 3. 手动试跑
 
 ```bash
-python3 collector.py
+python3 collector.py            # Linux/macOS（Windows 用 python collector.py）
 ```
 
 正常输出：`候选: N 条` → `完成：写入 N 条 | 去重跳过 0 条`。去你的 Zotero 里点同步看看。
 
-### 4. 每日定时（Linux crontab）
+### 4. 选择运行方式（三种任选，可并存）
+
+同一份代码，区别只是"谁在什么时候跑它"：
+
+**① 手动版**——想用就用，随时补漏：
+
+```bash
+python collector.py                      # 采集昨天
+python collector.py --date 2026-10-20    # 补采指定日期（宕机漏天用）
+python collector.py --days 3             # 回溯最近 3 天
+```
+
+**② 本地主机版**——不租服务器，在自己电脑上定时：
+
+- Windows（管理员 PowerShell 一行注册每日任务）：
+  ```powershell
+  schtasks /create /tn ZoteroCollector /tr "python C:\path\to\collector.py" /sc daily /st 08:05
+  ```
+  或用任务计划程序 GUI：操作 → 创建基本任务 → 每天 08:05 → 启动程序 `python`，参数 `collector.py 的完整路径`
+- macOS / Linux 桌面机：与服务器相同，`crontab -e` 加一行即可
+- 注意：本地定时意味着**关机期间不会采集**（漏掉的天用 `--date` 补回即可）
+
+**③ 服务器版**——7×24 最稳，推荐有 VPS 的用户：
 
 ```bash
 crontab -e
-# 每天 08:05 采集昨日增量
 5 8 * * * /usr/bin/python3 /path/to/collector.py >> /path/to/cron.log 2>&1
 ```
-
-systemd timer、Windows 任务计划同理——本质就是每天跑一次 `python3 collector.py`。
 
 ## 配置参考
 
@@ -88,7 +107,7 @@ systemd timer、Windows 任务计划同理——本质就是每天跑一次 `pyt
 ## 设计细节与已知取舍
 
 - **关键词是多词短语时**，OpenAlex 按语义检索、arXiv 按整句精确匹配（自动加引号）——建议用领域常用名词短语
-- **宕机漏天**：每日只查昨日窗口，若某天没跑成，那天就漏了（v1 取舍）。补漏可手动把运行日的前几天日期改进去跑
+- **宕机漏天**：每日默认只查昨日窗口，若某天没跑成，用 `--date 日期` 或 `--days N` 手动补采即可（去重机制保证补采不会重复入库）
 - **预印本与正式版**：按 arXiv ID / OpenAlex ID 去重，版本更新不会重复入库，元数据也不会自动更新
 - **ROS/深度学习这类超高频词慎用**：日命中上千条会淹库；先用窄词起步再放宽
 - **只写元数据**是刻意设计：Zotero 免费 300MB 只限附件，元数据不限量；OA PDF 链接在条目 Extra 字段，想读时用 Zotero 的"查找可用 PDF"现抓
